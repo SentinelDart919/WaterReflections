@@ -8,7 +8,7 @@ ext{
     // - latest: depend on the latest release of mindustry
     // - be: depend on the very latest commit of mindustry
     // - v<number>: depend on a specific version
-    mindustryVersion = "v159.7"
+    mindustryVersion = "v160"
     isWindows = System.getProperty("os.name").toLowerCase().contains("windows")
     sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
 }
@@ -60,11 +60,16 @@ tasks.register('jarAndroid'){
         //collect dependencies needed for desugaring
         def dependencies = (configurations.compileClasspath.asList() + configurations.runtimeClasspath.asList() + [new File(platformRoot, "android.jar")]).collect{ "--classpath $it.path" }.join(" ")
 
-        def d8 = isWindows ? "d8.bat" : "d8"
+        //find d8 in the Android SDK build-tools
+        def buildTools = new File("$sdkRoot/build-tools/").listFiles().sort().reverse().find{ f -> new File(f, isWindows ? "d8.bat" : "d8").exists() }
+        if(!buildTools) throw new GradleException("No d8 found in Android SDK build-tools. Ensure you have build-tools installed.")
 
-        //dex and desugar files - this requires d8 in your PATH
+        def d8 = new File(buildTools, isWindows ? "d8.bat" : "d8").absolutePath
+
+        //dex and desugar files (use Gradle's JVM to avoid Java version mismatch)
+        def env = ["JAVA_HOME=${System.getProperty("java.home")}"]
         "$d8 $dependencies --min-api 21 --output ${projectName}Android.jar ${projectName}Desktop.jar"
-                .execute(null, new File("build/libs")).waitForProcessOutput(System.out, System.err)
+                .execute(env as List, new File("build/libs")).waitForProcessOutput(System.out, System.err)
     }
 }
 
