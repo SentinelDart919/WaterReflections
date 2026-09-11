@@ -3,7 +3,7 @@ subtitle: Get Reflections in your Water!
 name: "b919-waterreflection"
 author: "B919"
 main: "b919.WaterMain"
-description: "Water Reflection shader I made on aquarion, now independent."
+description: "Water Reflection shader I made on aquarion, now independent. Fully Configurable compatible with Android and PC."
 version: 1.0
 minGameVersion: 160
 java: true
