@@ -98,10 +98,7 @@ public class WaterReflections {
     public static ReflectConfig effective(Category cat){
         ReflectConfig c = categoryConfig.get(cat);
         if(c != null) return c.copy();
-        ReflectConfig d = defaultConfigFor(cat);
-        if(isOverride(d)) return d.copy();
-        if(globalConfig != null) return globalConfig.copy();
-        return d;
+        return mergeDefault(defaultConfigFor(cat), globalBase());
     }
 
     //global override (all blocks and units)
@@ -127,10 +124,7 @@ public class WaterReflections {
     /** Returns the effective all-units config (stored -> unflipped unit default -> global). */
     public static ReflectConfig unitGroupEffective(){
         if(unitGroupConfig != null) return unitGroupConfig.copy();
-        ReflectConfig d = defaultForUnits();
-        if(isOverride(d)) return d.copy();
-        if(globalConfig != null) return globalConfig.copy();
-        return d;
+        return mergeDefault(defaultForUnits(), globalBase());
     }
 
     public static void saveUnitGroup(ReflectConfig c){
@@ -144,7 +138,7 @@ public class WaterReflections {
     }
 
     public static boolean isUnitGroupCustom(){
-        return unitGroupConfig != null && !equalsConfig(unitGroupConfig, defaultForUnits());
+        return unitGroupConfig != null && equalsConfig(unitGroupConfig, mergeDefault(defaultForUnits(), globalBase()));
     }
 
     //blocks
@@ -159,16 +153,13 @@ public class WaterReflections {
         ReflectConfig.clearKeys("b919-wr-block-" + block.name);
     }
 
-    /** Returns the effective config for a block (per-block -> per-category -> category default override -> global -> defaults). */
+    /** Returns the effective config for a block (per-block -> per-category -> category defaults merged over global -> defaults). */
     public static ReflectConfig effective(Block block){
         ReflectConfig c = config.get(block);
         if(c != null) return c.copy();
         ReflectConfig cat = categoryConfig.get(block.category);
         if(cat != null) return cat.copy();
-        ReflectConfig d = defaultConfigFor(block);
-        if(isOverride(d)) return d.copy();
-        if(globalConfig != null) return globalConfig.copy();
-        return d;
+        return mergeDefault(defaultConfigFor(block), globalBase());
     }
     //units
     public static void saveUnit(UnitType type, ReflectConfig c){
@@ -181,59 +172,52 @@ public class WaterReflections {
         ReflectConfig.clearKeys("b919-wr-unit-" + type.name);
     }
 
-    /** Returns a copy of the effective config for a unit type (per-unit -> all-units -> unflipped default -> global -> defaults). */
+    /** Returns a copy of the effective config for a unit type (per-unit -> all-units -> unflipped default merged over global). */
     public static ReflectConfig effective(UnitType type){
         ReflectConfig c = unitConfig.get(type);
         if(c != null) return c.copy();
         if(unitGroupConfig != null) return unitGroupConfig.copy();
-        ReflectConfig d = defaultConfigFor(type);
-        if(isOverride(d)) return d.copy();
-        if(globalConfig != null) return globalConfig.copy();
-        return d;
+        return mergeDefault(defaultForUnits(), globalBase());
     }
 
     //custom checks
 
+    /** Global config, or the generic defaults when none is set. Never mutate the returned value. */
+    private static ReflectConfig globalBase(){
+        return globalConfig != null ? globalConfig : new ReflectConfig();
+    }
+
     private static ReflectConfig blockBaseline(Block block){
         ReflectConfig cat = categoryConfig.get(block.category);
         if(cat != null) return cat;
-        ReflectConfig d = defaultConfigFor(block);
-        if(isOverride(d)) return d;
-        if(globalConfig != null) return globalConfig;
-        return d;
+        return mergeDefault(defaultConfigFor(block), globalBase());
     }
 
     /** Whether the block has a stored override differing from what it would use otherwise. */
     public static boolean isCustom(Block block){
         ReflectConfig c = config.get(block);
-        return c != null && !equalsConfig(c, blockBaseline(block));
+        return c != null && equalsConfig(c, blockBaseline(block));
     }
 
     private static ReflectConfig categoryBaseline(Category cat){
-        ReflectConfig d = defaultConfigFor(cat);
-        if(isOverride(d)) return d;
-        if(globalConfig != null) return globalConfig;
-        return d;
+        return mergeDefault(defaultConfigFor(cat), globalBase());
     }
 
     /** Whether the category has a stored override differing from what it would use otherwise. */
     public static boolean isCustom(Category cat){
         ReflectConfig c = categoryConfig.get(cat);
-        return c != null && !equalsConfig(c, categoryBaseline(cat));
+        return c != null && equalsConfig(c, categoryBaseline(cat));
     }
 
     private static ReflectConfig unitBaseline(UnitType type){
         if(unitGroupConfig != null) return unitGroupConfig;
-        ReflectConfig d = defaultConfigFor(type);
-        if(isOverride(d)) return d;
-        if(globalConfig != null) return globalConfig;
-        return d;
+        return mergeDefault(defaultForUnits(), globalBase());
     }
 
     /** Whether the unit type has a stored override differing from what it would use otherwise. */
     public static boolean isCustom(UnitType type){
         ReflectConfig c = unitConfig.get(type);
-        return c != null && !equalsConfig(c, unitBaseline(type));
+        return c != null && equalsConfig(c, unitBaseline(type));
     }
 
     //content mod API (if any mod want to use this as optional dependency)
@@ -245,17 +229,13 @@ public class WaterReflections {
         c.reflectionFlip = flip;
     }
     //defaults
-    private static boolean isOverride(ReflectConfig d){
-        return !equalsConfig(d, new ReflectConfig());
-    }
-
     public static boolean equalsConfig(ReflectConfig a, ReflectConfig b){
-        return a.reflectXdisplace == b.reflectXdisplace
-            && a.reflectYdisplace == b.reflectYdisplace
-            && a.reflectionFlip == b.reflectionFlip
-            && a.rotationDeg == b.rotationDeg
-            && a.positionX == b.positionX
-            && a.positionY == b.positionY;
+        return a.reflectXdisplace != b.reflectXdisplace
+                || a.reflectYdisplace != b.reflectYdisplace
+                || a.reflectionFlip != b.reflectionFlip
+                || a.rotationDeg != b.rotationDeg
+                || a.positionX != b.positionX
+                || a.positionY != b.positionY;
     }
 
     private static ReflectConfig defaultConfigFor(Category cat){
@@ -278,8 +258,16 @@ public class WaterReflections {
         return d;
     }
 
-    private static ReflectConfig defaultConfigFor(UnitType type){
-        return defaultForUnits();
+    private static ReflectConfig mergeDefault(ReflectConfig partial, ReflectConfig base){
+        ReflectConfig out = base.copy();
+        ReflectConfig gen = new ReflectConfig();
+        if(partial.reflectXdisplace != gen.reflectXdisplace) out.reflectXdisplace = partial.reflectXdisplace;
+        if(partial.reflectYdisplace != gen.reflectYdisplace) out.reflectYdisplace = partial.reflectYdisplace;
+        if(partial.reflectionFlip != gen.reflectionFlip) out.reflectionFlip = partial.reflectionFlip;
+        if(partial.rotationDeg != gen.rotationDeg) out.rotationDeg = partial.rotationDeg;
+        if(partial.positionX != gen.positionX) out.positionX = partial.positionX;
+        if(partial.positionY != gen.positionY) out.positionY = partial.positionY;
+        return out;
     }
     //render
     public static void captureScreen(){
@@ -423,20 +411,14 @@ public class WaterReflections {
         if(c != null) return c;
         ReflectConfig cat = categoryConfig.get(block.category);
         if(cat != null) return cat;
-        ReflectConfig d = defaultConfigFor(block);
-        if(isOverride(d)) return d;
-        if(globalConfig != null) return globalConfig;
-        return d;
+        return mergeDefault(defaultConfigFor(block), globalBase());
     }
 
     private static ReflectConfig configForUnit(UnitType type){
         ReflectConfig c = unitConfig.get(type);
         if(c != null) return c;
         if(unitGroupConfig != null) return unitGroupConfig;
-        ReflectConfig d = defaultConfigFor(type);
-        if(isOverride(d)) return d;
-        if(globalConfig != null) return globalConfig;
-        return d;
+        return mergeDefault(defaultForUnits(), globalBase());
     }
 
     public static class ReflectConfig{

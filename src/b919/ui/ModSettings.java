@@ -144,7 +144,7 @@ ImageButton resetBtn = new ImageButton(Tex.whiteui, Styles.clearNonei);
         Runnable saveCfg = () -> {
             ReflectConfig cfg = new ReflectConfig(safeFloat(xf.getText()), safeFloat(yf.getText()), fl.isChecked(),
                 safeFloat(rf.getText()), safeFloat(pxf.getText()), safeFloat(pyf.getText()));
-            if(!WaterReflections.equalsConfig(cfg, c)) save.get(cfg);
+            if(WaterReflections.equalsConfig(cfg, c)) save.get(cfg);
             applyResetVisibility.run();
         };
         xf.changed(saveCfg);
@@ -280,7 +280,7 @@ private static void showBlockConfig(){
                     safeFloat(rf[0].getText()),
                     safeFloat(pxf[0].getText()),
                     safeFloat(pyf[0].getText()));
-                if(!WaterReflections.equalsConfig(cfg, current)) save.get(cfg);
+                if(WaterReflections.equalsConfig(cfg, current)) save.get(cfg);
                 dialog.hide();
             });
             if(canReset){
