@@ -1,6 +1,7 @@
 package b919.ui;
 
 import arc.Core;
+import arc.func.Boolp;
 import arc.func.Cons;
 import arc.graphics.g2d.TextureRegion;
 import arc.scene.style.Drawable;
@@ -39,9 +40,13 @@ public class ModSettings{
 
         Vars.ui.settings.addCategory(Core.bundle.get("settings.b919-wr.title"), (Drawable)null, root -> {
 
-            //master toggle
-            //redundant??
-            root.checkPref("b919-wr-unflip-turrets", false, WaterReflections::setTurretsUnflipped);
+            //global config
+            root.pref(new Setting("b919-wr-global"){
+                @Override public void add(SettingsTable t){
+                    t.button(title, Icon.refresh, ModSettings::showGlobalConfig).left().padTop(4f).padBottom(4f);
+                    t.row();
+                }
+            });
 
             //per category config button
             root.pref(new Setting("b919-wr-categories"){
@@ -61,52 +66,96 @@ public class ModSettings{
         });
     }
 
+    //global config dialog
+    private static void showGlobalConfig(){
+        showEditor(Core.bundle.get("b919-wr.global"), WaterReflections.globalFor(),
+            WaterReflections::saveGlobal,
+            WaterReflections::resetGlobal,
+            WaterReflections.isGlobalCustom());
+    }
+
     //category config dialog
     private static void showCategoryConfig(){
         BaseDialog dialog = new BaseDialog(Core.bundle.get("dialog.b919-wr-categories.title"));
         dialog.addCloseButton();
 
         dialog.cont.pane(p -> {
+            // block categories
+            p.add(Core.bundle.get("b919-wr.blocks")).left().padBottom(4f).padTop(4f).padLeft(4f).row();
             for(Category cat : Category.all){
-                ReflectConfig c = WaterReflections.effective(cat);
-                p.table(row -> {
-                    row.left();
-                    row.add(catName(cat)).width(120f).left();
-
-                    row.add("X:");
-                    TextField xf = new TextField(String.valueOf(c.reflectXdisplace));
-                    row.add(xf).width(60f).padRight(6f);
-
-                    row.add("Y:");
-                    TextField yf = new TextField(String.valueOf(c.reflectYdisplace));
-                    row.add(yf).width(60f).padRight(6f);
-
-                    CheckBox fl = new CheckBox(Core.bundle.get("b919-wr.flip"));
-                    fl.setChecked(c.reflectionFlip);
-                    row.add(fl).padLeft(6f);
-
-                    Runnable save = () -> {
-                        ReflectConfig cfg = WaterReflections.categoryFor(cat);
-                        cfg.reflectXdisplace = safeFloat(xf.getText());
-                        cfg.reflectYdisplace = safeFloat(yf.getText());
-                        cfg.reflectionFlip = fl.isChecked();
-                        WaterReflections.saveCategory(cat, cfg);
-                    };
-                    xf.changed(save);
-                    yf.changed(save);
-                    fl.changed(save);
-
-                    if(WaterReflections.hasCategoryConfig(cat)){
-                        row.button(Icon.cancel, () -> confirmReset(catName(cat), () -> {
-                            WaterReflections.resetCategory(cat);
-                            dialog.hide();
-                            showCategoryConfig(); // refresh
-                        })).padLeft(6f);
-                    }
-                }).left().padBottom(4f).padTop(4f).row();
+                p.table(row -> addConfigRow(dialog, row, catName(cat),
+                    WaterReflections.effective(cat),
+                    cfg -> WaterReflections.saveCategory(cat, cfg),
+                    () -> WaterReflections.isCustom(cat),
+                    () -> WaterReflections.resetCategory(cat))
+                ).left().padBottom(4f).padTop(4f).row();
             }
+            // all units
+            p.add(Core.bundle.get("b919-wr.units")).left().padBottom(4f).padTop(8f).padLeft(4f).row();
+            p.table(row -> addConfigRow(dialog, row, Core.bundle.get("b919-wr.units"),
+                WaterReflections.unitGroupEffective(),
+                WaterReflections::saveUnitGroup,
+                WaterReflections::isUnitGroupCustom,
+                WaterReflections::resetUnitGroup)
+            ).left().padBottom(4f).padTop(4f).row();
         }).fill();
         dialog.show();
+    }
+
+    private static void addConfigRow(BaseDialog dialog, Table row, String name, ReflectConfig c, Cons<ReflectConfig> save, Boolp isCustom, Runnable reset){
+        row.left();
+        row.add(name).width(120f).left();
+
+        row.add(Core.bundle.get("b919-wr.sizeX")).padRight(6f);
+        TextField xf = new TextField(String.valueOf(c.reflectXdisplace));
+        row.add(xf).width(90f).padRight(8f);
+
+        row.add(Core.bundle.get("b919-wr.sizeY")).padRight(6f);
+        TextField yf = new TextField(String.valueOf(c.reflectYdisplace));
+        row.add(yf).width(90f).padRight(8f);
+
+        row.add(Core.bundle.get("b919-wr.posX")).padRight(6f);
+        TextField pxf = new TextField(String.valueOf(c.positionX));
+        row.add(pxf).width(90f).padRight(8f);
+
+        row.add(Core.bundle.get("b919-wr.posY")).padRight(6f);
+        TextField pyf = new TextField(String.valueOf(c.positionY));
+        row.add(pyf).width(90f).padRight(8f);
+
+        row.add("Rot:");
+        TextField rf = new TextField(String.valueOf(c.rotationDeg));
+        row.add(rf).width(90f).padRight(6f);
+
+        CheckBox fl = new CheckBox(Core.bundle.get("b919-wr.flip"));
+        fl.setChecked(c.reflectionFlip);
+        row.add(fl).padLeft(6f);
+
+ImageButton resetBtn = new ImageButton(Tex.whiteui, Styles.clearNonei);
+        resetBtn.getStyle().imageUp = new TextureRegionDrawable(Icon.cancel);
+        resetBtn.resizeImage(8 * 4f);
+        resetBtn.clicked(() -> confirmReset(name, () -> {
+            reset.run();
+            dialog.hide();
+            showCategoryConfig();
+        }));
+
+        Runnable applyResetVisibility = () -> resetBtn.visible = isCustom.get();
+
+        Runnable saveCfg = () -> {
+            ReflectConfig cfg = new ReflectConfig(safeFloat(xf.getText()), safeFloat(yf.getText()), fl.isChecked(),
+                safeFloat(rf.getText()), safeFloat(pxf.getText()), safeFloat(pyf.getText()));
+            if(!WaterReflections.equalsConfig(cfg, c)) save.get(cfg);
+            applyResetVisibility.run();
+        };
+        xf.changed(saveCfg);
+        yf.changed(saveCfg);
+        pxf.changed(saveCfg);
+        pyf.changed(saveCfg);
+        rf.changed(saveCfg);
+        fl.changed(saveCfg);
+
+        row.add(resetBtn).padLeft(6f);
+        applyResetVisibility.run();
     }
 
 
@@ -176,31 +225,45 @@ private static void showBlockConfig(){
         ReflectConfig c = WaterReflections.effective(block);
         showEditor(block.localizedName, c,
             cfg -> WaterReflections.saveBlock(block, cfg),
-            () -> WaterReflections.resetBlock(block));
+            () -> WaterReflections.resetBlock(block),
+            WaterReflections.isCustom(block));
     }
 
     private static void showUnitEditor(UnitType type){
         ReflectConfig c = WaterReflections.effective(type);
         showEditor(type.localizedName, c,
             cfg -> WaterReflections.saveUnit(type, cfg),
-            () -> WaterReflections.resetUnit(type));
+            () -> WaterReflections.resetUnit(type),
+            WaterReflections.isCustom(type));
     }
 
-    private static void showEditor(String name, ReflectConfig current, Cons<ReflectConfig> save, Runnable reset){
+    private static void showEditor(String name, ReflectConfig current, Cons<ReflectConfig> save, Runnable reset, boolean canReset){
         BaseDialog dialog = new BaseDialog(Core.bundle.format("dialog.b919-wr-editor.title", name));
         dialog.addCloseButton();
 
-        TextField[] xf = new TextField[1], yf = new TextField[1];
+        TextField[] xf = new TextField[1], yf = new TextField[1], rf = new TextField[1], pxf = new TextField[1], pyf = new TextField[1];
         CheckBox[] fl = new CheckBox[1];
 
         dialog.cont.table(t -> {
-            t.add("X:");
+            t.add(Core.bundle.get("b919-wr.sizeX")).padRight(6f);
             xf[0] = new TextField(String.valueOf(current.reflectXdisplace));
-            t.add(xf[0]).width(70f).padRight(10f);
+            t.add(xf[0]).width(90f).padRight(10f);
 
-            t.add("Y:");
+            t.add(Core.bundle.get("b919-wr.sizeY")).padRight(6f);
             yf[0] = new TextField(String.valueOf(current.reflectYdisplace));
-            t.add(yf[0]).width(70f).padRight(10f);
+            t.add(yf[0]).width(90f).padRight(10f);
+
+            t.add(Core.bundle.get("b919-wr.posX")).padRight(6f);
+            pxf[0] = new TextField(String.valueOf(current.positionX));
+            t.add(pxf[0]).width(90f).padRight(10f);
+
+            t.add(Core.bundle.get("b919-wr.posY")).padRight(6f);
+            pyf[0] = new TextField(String.valueOf(current.positionY));
+            t.add(pyf[0]).width(90f).padRight(10f);
+
+            t.add("Rot:");
+            rf[0] = new TextField(String.valueOf(current.rotationDeg));
+            t.add(rf[0]).width(90f).padRight(10f);
 
             t.add("Flip:");
             fl[0] = new CheckBox("");
@@ -210,16 +273,22 @@ private static void showBlockConfig(){
 
         dialog.cont.table(btn -> {
             btn.button("@ok", () -> {
-                save.get(new ReflectConfig(
+                ReflectConfig cfg = new ReflectConfig(
                     safeFloat(xf[0].getText()),
                     safeFloat(yf[0].getText()),
-                    fl[0].isChecked()));
+                    fl[0].isChecked(),
+                    safeFloat(rf[0].getText()),
+                    safeFloat(pxf[0].getText()),
+                    safeFloat(pyf[0].getText()));
+                if(!WaterReflections.equalsConfig(cfg, current)) save.get(cfg);
                 dialog.hide();
             });
-            btn.button(Core.bundle.get("b919-wr.reset"), () -> confirmReset(name, () -> {
-                reset.run();
-                dialog.hide();
-            })).padLeft(8f);
+            if(canReset){
+                btn.button(Core.bundle.get("b919-wr.reset"), () -> confirmReset(name, () -> {
+                    reset.run();
+                    dialog.hide();
+                })).padLeft(8f);
+            }
         }).pad(8f).row();
 
         dialog.show();
